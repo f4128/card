@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>법인카드 집근처 분석</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f9; --panel:#fff; --line:#e3e7ee; --text:#1c2430; --sub:#677489;
+    --pri:#2f6bff; --pri-weak:#e8efff; --danger:#e5484d; --danger-weak:#fdecec; --ok:#1a9d5c; --ok-weak:#e5f6ed; --warn:#d98a00; --warn-weak:#fff4de;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#10141a; --panel:#181e27; --line:#2a3340; --text:#e8edf4; --sub:#8c9ab0;
+      --pri:#6c93ff; --pri-weak:#1d2a4a; --danger:#ff6b70; --danger-weak:#3a1d20; --ok:#3ecf8e; --ok-weak:#14301f; --warn:#f0b13c; --warn-weak:#3a2c10; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Pretendard","Malgun Gothic",system-ui,sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{font-size:17px;margin:0}
+  header .sub{color:var(--sub);font-size:12px}
+  .layout{display:grid;grid-template-columns:400px 1fr;gap:16px;padding:16px;max-width:1800px;margin:0 auto}
+  @media(max-width:1000px){.layout{grid-template-columns:1fr}}
+  .col{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .card h2{font-size:14px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  .step{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--pri);color:#fff;font-size:11px}
+  label{display:block;font-size:12px;color:var(--sub);margin:8px 0 4px}
+  input[type=text],input[type=password],input[type=number],select,textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:inherit}
+  textarea{min-height:80px;resize:vertical}
+  button{padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);cursor:pointer;font:inherit}
+  button:hover{border-color:var(--pri)}
+  button.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .row{display:flex;gap:8px;align-items:center}
+  .row>*{flex:1}
+  .row>button{flex:none}
+  .hint{font-size:12px;color:var(--sub);margin-top:6px}
+  .status{font-size:12px;margin-top:6px}
+  .ok{color:var(--ok)} .bad{color:var(--danger)}
+  .drop{border:2px dashed var(--line);border-radius:8px;padding:18px;text-align:center;color:var(--sub);cursor:pointer}
+  .drop.on{border-color:var(--pri);background:var(--pri-weak)}
+  #map{height:460px;border-radius:10px;border:1px solid var(--line);background:var(--bg);display:grid;place-items:center;color:var(--sub)}
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  @media(max-width:700px){.cards{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--bg);border-radius:8px;padding:10px 12px}
+  .stat .k{font-size:11px;color:var(--sub)} .stat .v{font-size:19px;font-weight:700}
+  .stat.hot .v{color:var(--danger)}
+  .toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:10px}
+  .toolbar>div{min-width:130px}
+  .toolbar label{margin-top:0}
+  .check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);margin:0;padding-bottom:7px}
+  .tablewrap{overflow:auto;max-height:420px;border:1px solid var(--line);border-radius:8px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{padding:6px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  th{position:sticky;top:0;background:var(--panel);z-index:1;font-weight:600;color:var(--sub)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr{cursor:pointer} tbody tr:hover{background:var(--pri-weak)}
+  tr.near td:first-child{box-shadow:inset 3px 0 var(--danger)}
+  .badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;margin-right:3px}
+  .b-near{background:var(--danger-weak);color:var(--danger)}
+  .b-wk{background:var(--warn-weak);color:var(--warn)}
+  .b-nt{background:var(--pri-weak);color:var(--pri)}
+  .b-na{background:var(--bg);color:var(--sub)}
+  .userlist{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .userlist .u{display:grid;grid-template-columns:90px 1fr 22px;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line)}
+  .userlist .u:last-child{border:0}
+  .userlist input{padding:5px 7px;font-size:12px}
+  .progress{height:6px;background:var(--bg);border-radius:4px;overflow:hidden;margin-top:8px}
+  .progress>i{display:block;height:100%;width:0;background:var(--pri);transition:width .15s}
+  .dot{width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer}
+  .dot.near{background:#e5484d} .dot.far{background:#8c9ab0;opacity:.75}
+  .home{font-size:22px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+  .iw{padding:8px 10px;font-size:12px;line-height:1.5;min-width:200px;color:#222}
+  .sum td:first-child{font-weight:600}
+  .bar{height:6px;background:var(--bg);border-radius:3px;min-width:60px}
+  .bar>i{display:block;height:100%;background:var(--danger);border-radius:3px}
+  .b-big{background:var(--warn-weak);color:var(--warn)}
+  .b-hi{background:var(--danger);color:#fff}
+  .risk{display:inline-block;min-width:34px;text-align:center;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+  .r-high{background:var(--danger);color:#fff} .r-mid{background:var(--warn-weak);color:var(--warn)} .r-low{background:var(--bg);color:var(--sub)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .chips:empty{display:none}
+  .chip{padding:3px 10px;border:1px solid var(--line);border-radius:14px;font-size:12px;cursor:pointer;background:var(--bg)}
+  .chip.on{background:var(--pri);border-color:var(--pri);color:#fff}
+  .chip b{margin-left:5px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .report{font-size:14px;line-height:1.7}
+  .report h1{font-size:21px;margin:0 0 6px;border-bottom:2px solid var(--pri);padding-bottom:6px}
+  .report h2{font-size:16px;margin:20px 0 6px;color:var(--pri)}
+  .report h3{font-size:14px;margin:14px 0 4px}
+  .report p{margin:6px 0} .report ul,.report ol{margin:6px 0;padding-left:22px}
+  .report table{margin:8px 0;font-size:13px}
+  .report th{position:static;background:var(--bg)}
+  .report td,.report th{white-space:normal;border:1px solid var(--line)}
+  .report code{background:var(--bg);padding:0 4px;border-radius:3px}
+  .report hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+  .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  @media print{
+    :root{--bg:#fff;--panel:#fff;--line:#ccc;--text:#000;--sub:#444;--pri:#1a4fd0}
+    header,.col:first-child,#map,.col>.card:not(#reportCard),.actions,#reportCard .hint{display:none!important}
+    .layout{display:block;padding:0}
+    #reportCard{border:0;padding:0}
+  }
+  details summary{cursor:pointer;font-weight:600;color:var(--sub);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏠 법인카드 집근처 사용 분석</h1>
+  <span class="sub">카카오지도 기반 · 모든 데이터는 이 브라우저 안에서만 처리됩니다</span>
+</header>
+
+<div class="layout">
+  <!-- 좌측: 설정 -->
+  <div class="col">
+    <section class="card">
+      <h2><span class="step">1</span>카카오 지도 설정</h2>
+      <label for="appkey">JavaScript 키</label>
+      <div class="row">
+        <input id="appkey" type="password" placeholder="카카오 개발자 앱의 JavaScript 키">
+        <button id="btnKey" class="pri">연결</button>
+      </div>
+      <div id="keyStatus" class="status"></div>
+      <details style="margin-top:8px"><summary>키 발급 방법</summary>
+        <div class="hint">developers.kakao.com → 내 애플리케이션 → 앱 생성 → 플랫폼(Web)에 <b>http://localhost:5500</b> 등록 → JavaScript 키 복사. 지도 서비스 활성화 필요. <b>start.bat</b>으로 서버를 띄운 뒤 접속하세요(파일 직접 열기는 불가).</div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">2</span>카드 사용내역 업로드</h2>
+      <div id="drop" class="drop">엑셀(.xlsx/.xls) 또는 CSV를 끌어놓거나 클릭<input id="file" type="file" accept=".xlsx,.xls,.csv" hidden></div>
+      <div id="fileStatus" class="status"></div>
+      <details style="margin-top:8px"><summary>인식하는 컬럼</summary>
+        <div class="hint">순번, 카드번호, 이용자명, 이용일, 가맹점명, 이용금액, 가맹점 주소, 사업자 등록번호, 승인번호, 과세유형, 전표구분, 미화금액, 미화환율, 승인시간, 가맹점업종코드, 가맹점업종명, 유종, 리터당단가. 필수는 <b>이용자명·이용일·가맹점명·이용금액·가맹점 주소</b>입니다.</div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">3</span>이용자별 집 주소</h2>
+      <div id="userList" class="userlist"><div class="hint" style="padding:10px">업로드 후 이용자 목록이 표시됩니다.</div></div>
+      <details style="margin-top:8px"><summary>일괄 붙여넣기 (이름 [탭/쉼표] 주소)</summary>
+        <textarea id="bulk" placeholder="홍길동	서울특별시 강남구 테헤란로 152&#10;김철수	경기도 성남시 분당구 판교역로 235"></textarea>
+        <button id="btnBulk" style="margin-top:6px">적용</button>
+      </details>
+      <div class="hint">집 주소는 이 브라우저(localStorage)에만 저장됩니다.</div>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">4</span>분석 실행</h2>
+      <label for="radius">집근처 기준 반경: <b id="radiusLabel">500</b> m</label>
+      <input id="radius" type="range" min="100" max="5000" step="100" value="500">
+      <button id="btnRun" class="pri" style="width:100%;margin-top:10px" disabled>주소 좌표 변환 + 분석</button>
+      <div class="progress"><i id="bar"></i></div>
+      <div id="runStatus" class="status"></div>
+      <button id="btnClearCache" style="margin-top:8px;font-size:12px">좌표 캐시 초기화</button>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">5</span>이상징후 탐지 기준</h2>
+      <div class="grid2">
+        <div><label for="pBig">고액 기준 (원)</label><input id="pBig" type="number" min="0" step="10000" value="300000"></div>
+        <div><label for="pRep">반복방문 기준 (회)</label><input id="pRep" type="number" min="2" value="5"></div>
+      </div>
+      <label for="pKw">제외업종 키워드 (쉼표 구분)</label>
+      <input id="pKw" type="text" value="유흥,주점,단란,노래,골프,마사지,안마,카지노,룸살롱,호프">
+      <details style="margin-top:8px"><summary>탐지 규칙 / 위험도 산정</summary>
+        <div class="hint">제외업종(+3) · 집근처(+2) · 분할결제 의심(+2: 같은 이용자·가맹점·일자 2건 이상, 합계가 고액 기준 이상) · 중복 의심(+2: 같은 이용자·가맹점·일자·금액) · 고액·반복방문·주말·심야(각 +1). 합계 4점 이상 <b>높음</b>, 2~3점 <b>중간</b>, 1점 <b>낮음</b>. 의심 신호일 뿐 부정 사용을 확정하는 것은 아닙니다.</div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">6</span>Gemini AI 요약 · 보고서</h2>
+      <label for="gkey">Gemini API 키</label>
+      <div class="row"><input id="gkey" type="password" placeholder="Google AI Studio에서 발급한 API 키" autocomplete="off"><button id="btnGkey">테스트</button></div>
+      <label class="check" style="margin-top:6px"><input id="gsave" type="checkbox">이 브라우저에 키 저장</label>
+      <div id="gStatus" class="status"></div>
+      <label for="gmodel">모델</label>
+      <input id="gmodel" type="text" value="gemini-3.8-flash" list="gmodels">
+      <datalist id="gmodels"><option value="gemini-3.8-flash"></datalist>
+      <div class="hint">"테스트"를 누르면 이 키로 쓸 수 있는 모델 목록이 입력칸 목록에 채워집니다.</div>
+      <label class="check" style="margin-top:6px"><input id="gmask" type="checkbox" checked>직원 이름 마스킹 후 전송 (결과는 실명으로 복원)</label>
+      <div class="grid2">
+        <div><label for="rDept">작성 부서</label><input id="rDept" type="text" placeholder="예: 경영지원팀"></div>
+        <div><label for="rAuthor">작성자</label><input id="rAuthor" type="text"></div>
+      </div>
+      <label for="rNote">추가 지시사항 (선택)</label>
+      <textarea id="rNote" style="min-height:56px" placeholder="예: 접대비 관점 강조, 한 페이지 분량"></textarea>
+      <div class="row" style="margin-top:10px"><button id="btnSummary" class="pri" disabled>이상징후 요약</button><button id="btnReport" class="pri" disabled>경영진 보고서 작성</button></div>
+      <div class="hint">Google로 전송되는 내용: 집계 통계와 상위 이상거래(일자·가맹점명·업종·금액). <b>카드번호·사업자번호·집 주소·가맹점 주소는 전송되지 않습니다.</b></div>
+    </section>
+  </div>
+
+  <!-- 우측: 결과 -->
+  <div class="col">
+    <section class="card">
+      <div class="cards">
+        <div class="stat"><div class="k">전체 건수</div><div class="v" id="sTotal">-</div></div>
+        <div class="stat hot"><div class="k">집근처 건수</div><div class="v" id="sNear">-</div></div>
+        <div class="stat"><div class="k">집근처 금액</div><div class="v" id="sAmt">-</div></div>
+        <div class="stat"><div class="k">좌표 미확인</div><div class="v" id="sNa">-</div></div>
+        <div class="stat hot"><div class="k">위험 거래(중간↑)</div><div class="v" id="sRisk">-</div></div>
+      </div>
+      <div class="chips" id="chips"></div>
+    </section>
+
+    <section class="card" id="reportCard" hidden>
+      <h2 id="aiTitle">AI 결과</h2>
+      <div id="aiBody" class="report"></div>
+      <div class="actions">
+        <button id="aiCopy">복사</button><button id="aiPrint">인쇄 / PDF</button><button id="aiDoc">Word 저장</button>
+      </div>
+      <div class="hint">AI가 생성한 초안입니다. 수치와 판단은 원본 데이터와 대조한 뒤 사용하세요.</div>
+    </section>
+
+    <div id="map">지도 키를 연결하면 이곳에 지도가 표시됩니다.</div>
+
+    <section class="card">
+      <div class="toolbar">
+        <div><label>이용자</label><select id="fUser"><option value="">전체</option></select></div>
+        <div><label>업종 포함 검색</label><input id="fText" type="text" placeholder="가맹점명/업종/주소"></div>
+        <div><label>위험도</label><select id="fRisk"><option value="any">이상징후 있음</option><option value="mid">중간 이상</option><option value="high">높음만</option><option value="">전체 거래</option></select></div>
+        <label class="check"><input id="fNear" type="checkbox">집근처만</label>
+        <div style="flex:none"><button id="btnExport" disabled>엑셀 내보내기</button></div>
+      </div>
+      <div class="tablewrap">
+        <table id="tbl"><thead><tr>
+          <th>이용자</th><th>이용일</th><th>시간</th><th>가맹점명</th><th>업종</th><th class="num">금액</th><th>가맹점 주소</th><th class="num">거리</th><th>위험</th><th>이상징후</th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+      <div id="tblInfo" class="hint"></div>
+    </section>
+
+    <section class="card">
+      <h2>이용자별 요약</h2>
+      <div class="tablewrap" style="max-height:300px">
+        <table id="sum"><thead><tr>
+          <th>이용자</th><th class="num">전체 건</th><th class="num">높음</th><th class="num">중간</th><th class="num">집근처 건</th><th class="num">집근처 비율</th><th></th><th class="num">집근처 금액</th><th class="num">전체 금액</th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const won = n => Math.round(n).toLocaleString('ko-KR');
+const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+const state = {
+  rows: [],              // 정규화된 카드 내역
+  homes: lsGet('cc_homes', {}),   // 이름 -> {addr, lat, lng}
+  geo: lsGet('cc_geo', {}),       // 주소 -> {lat,lng} | null
+  mapReady: false, map: null, overlays: [], iw: null, geocoder: null, places: null,
+  analyzed: false,
+  P: {}, fc: '', ai: null,   // 탐지 기준, 유형 필터, 마지막 AI 결과
+};
+
+/* ---------- 카카오 SDK ---------- */
+function loadKakao(key) {
+  return new Promise((resolve, reject) => {
+    if (window.kakao && kakao.maps && kakao.maps.services) return resolve();
+    const s = document.createElement('script');
+    s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&libraries=services&autoload=false`;
+    s.onload = () => kakao.maps.load(resolve);
+    s.onerror = () => reject(new Error('SDK 로드 실패 (키/도메인 등록을 확인하세요)'));
+    document.head.appendChild(s);
+  });
+}
+async function connectMap() {
+  const key = $('#appkey').value.trim();
+  if (!key) return setStatus('#keyStatus', '키를 입력하세요.', 'bad');
+  setStatus('#keyStatus', '연결 중…');
+  try {
+    await loadKakao(key);
+    $('#map').textContent = '';
+    state.map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(37.5665, 126.978), level: 7 });
+    state.geocoder = new kakao.maps.services.Geocoder();
+    state.places = new kakao.maps.services.Places();
+    state.iw = new kakao.maps.InfoWindow({ removable: true });
+    state.mapReady = true;
+    lsSet('cc_key', key);
+    setStatus('#keyStatus', '✔ 연결되었습니다.', 'ok');
+    updateRunBtn(); render();
+  } catch (e) { setStatus('#keyStatus', '✖ ' + e.message, 'bad'); }
+}
+function setStatus(sel, msg, cls = '') { const el = $(sel); el.textContent = msg; el.className = 'status ' + cls; }
+
+/* ---------- 파일 파싱 ---------- */
+const COLS = ['순번','카드번호','이용자명','이용일','가맹점명','이용금액','가맹점 주소','사업자 등록번호','승인번호','과세유형','전표구분','미화금액','미화환율','승인시간','가맹점업종코드','가맹점업종명','유종','리터당단가'];
+const REQUIRED = ['이용자명','이용일','가맹점명','이용금액','가맹점 주소'];
+
+function normHeader(h) { return String(h).replace(/\s+/g, '').toLowerCase(); }
+function parseDate(v) {
+  if (v instanceof Date && !isNaN(v)) return fmtDate(v.getFullYear(), v.getMonth() + 1, v.getDate());
+  if (typeof v === 'number' && v > 20000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 864e5)); return fmtDate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()); }
+  const s = String(v).trim();
+  let m = s.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/); if (m) return fmtDate(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{4})(\d{2})(\d{2})/); if (m) return fmtDate(+m[1], +m[2], +m[3]);
+  return s;
+}
+const fmtDate = (y, m, d) => `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+function parseTime(v) {
+  if (typeof v === 'number' && v < 1) { const t = Math.round(v * 86400); return `${String(Math.floor(t/3600)).padStart(2,'0')}:${String(Math.floor(t%3600/60)).padStart(2,'0')}`; }
+  const s = String(v).trim(); if (!s) return '';
+  let m = s.match(/(\d{1,2}):(\d{2})/); if (m) return `${m[1].padStart(2,'0')}:${m[2]}`;
+  m = s.replace(/\D/g, '').padStart(6, '0').match(/^(\d{2})(\d{2})/); return m ? `${m[1]}:${m[2]}` : s;
+}
+const parseAmt = v => { const n = Number(String(v).replace(/[^\d.-]/g, '')); return isNaN(n) ? 0 : n; };
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
+      if (!raw.length) throw new Error('데이터가 없습니다.');
+      const map = {}; // 표준컬럼 -> 실제 헤더
+      Object.keys(raw[0]).forEach(h => { const c = COLS.find(c => normHeader(c) === normHeader(h)); if (c) map[c] = h; });
+      const missing = REQUIRED.filter(c => !map[c]);
+      if (missing.length) throw new Error('필수 컬럼 없음: ' + missing.join(', '));
+      const g = (r, c) => map[c] ? r[map[c]] : '';
+      state.rows = raw.filter(r => String(g(r, '가맹점명')).trim() || String(g(r, '가맹점 주소')).trim()).map((r, i) => {
+        const date = parseDate(g(r, '이용일')), time = parseTime(g(r, '승인시간'));
+        const dow = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(date + 'T00:00:00').getDay() : -1;
+        const hour = time ? +time.slice(0, 2) : -1;
+        return {
+          id: i, user: String(g(r, '이용자명')).trim() || '(미상)', date, time,
+          merchant: String(g(r, '가맹점명')).trim(), amount: parseAmt(g(r, '이용금액')),
+          addr: String(g(r, '가맹점 주소')).replace(/\s+/g, ' ').trim(), biz: String(g(r, '가맹점업종명')).trim(),
+          weekend: dow === 0 || dow === 6, night: hour >= 22 || (hour >= 0 && hour < 5),
+          lat: null, lng: null, dist: null, home: null, orig: r,
+        };
+      });
+      state.analyzed = false; prepareGroups();
+      setStatus('#fileStatus', `✔ ${file.name} — ${state.rows.length.toLocaleString()}건, 이용자 ${new Set(state.rows.map(r => r.user)).size}명`, 'ok');
+      renderUsers(); updateRunBtn(); render();
+    } catch (err) { setStatus('#fileStatus', '✖ ' + err.message, 'bad'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ---------- 이용자/집 주소 ---------- */
+function users() { return [...new Set(state.rows.map(r => r.user))].sort((a, b) => a.localeCompare(b, 'ko')); }
+function renderUsers() {
+  const us = users(), box = $('#userList');
+  if (!us.length) return;
+  box.innerHTML = us.map(u => {
+    const h = state.homes[u];
+    return `<div class="u" data-u="${esc(u)}"><span>${esc(u)}</span><input type="text" placeholder="집 주소" value="${esc(h?.addr || '')}"><span class="ico">${h?.lat ? '✅' : ''}</span></div>`;
+  }).join('');
+  box.querySelectorAll('input').forEach(inp => inp.addEventListener('change', () => {
+    const u = inp.closest('.u').dataset.u, addr = inp.value.trim();
+    if (addr) state.homes[u] = { addr }; else delete state.homes[u];
+    lsSet('cc_homes', state.homes); state.analyzed = false; updateRunBtn();
+  }));
+  const sel = $('#fUser'), cur = sel.value;
+  sel.innerHTML = '<option value="">전체</option>' + us.map(u => `<option>${esc(u)}</option>`).join('');
+  sel.value = us.includes(cur) ? cur : '';
+}
+function applyBulk() {
+  let n = 0;
+  $('#bulk').value.split(/\r?\n/).forEach(line => {
+    const m = line.split(/\t|,/); if (m.length < 2) return;
+    const name = m[0].trim(), addr = m.slice(1).join(' ').trim();
+    if (name && addr) { state.homes[name] = { addr }; n++; }
+  });
+  lsSet('cc_homes', state.homes); state.analyzed = false; renderUsers(); updateRunBtn();
+  setStatus('#runStatus', `${n}명의 집 주소를 적용했습니다.`, 'ok');
+}
+function updateRunBtn() {
+  $('#btnRun').disabled = !(state.mapReady && state.rows.length && users().some(u => state.homes[u]?.addr));
+  $('#btnSummary').disabled = $('#btnReport').disabled = !state.rows.length;
+}
+
+/* ---------- 지오코딩 ---------- */
+function cleanAddr(a) { return a.replace(/\(.*?\)/g, '').replace(/\s+/g, ' ').trim(); }
+function geocode(addr, hint) {
+  const q = cleanAddr(addr);
+  return new Promise(resolve => {
+    if (!q) return resolve(null);
+    state.geocoder.addressSearch(q, (res, st) => {
+      if (st === kakao.maps.services.Status.OK && res.length) return resolve({ lat: +res[0].y, lng: +res[0].x });
+      const kw = hint ? `${q} ${hint}` : q;
+      state.places.keywordSearch(kw, (r2, s2) => {
+        if (s2 === kakao.maps.services.Status.OK && r2.length) resolve({ lat: +r2[0].y, lng: +r2[0].x }); else resolve(null);
+      });
+    });
+  });
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function haversine(a, b, c, d) {
+  const R = 6371000, t = x => x * Math.PI / 180, dl = t(c - a), dg = t(d - b);
+  const h = Math.sin(dl/2)**2 + Math.cos(t(a)) * Math.cos(t(c)) * Math.sin(dg/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+async function runAnalysis() {
+  const btn = $('#btnRun'); btn.disabled = true;
+  // 집 주소 + 가맹점 주소 중 캐시에 없는 것만 조회
+  const homeNames = users().filter(u => state.homes[u]?.addr);
+  const jobs = [];
+  homeNames.forEach(u => { const a = state.homes[u].addr; if (!(a in state.geo)) jobs.push({ addr: a }); });
+  const merch = new Map();
+  state.rows.forEach(r => { if (r.addr && !(r.addr in state.geo) && !merch.has(r.addr)) merch.set(r.addr, r.merchant); });
+  merch.forEach((m, a) => jobs.push({ addr: a, hint: m }));
+  const seen = new Set(); const uniq = jobs.filter(j => !seen.has(j.addr) && seen.add(j.addr));
+
+  for (let i = 0; i < uniq.length; i++) {
+    state.geo[uniq[i].addr] = await geocode(uniq[i].addr, uniq[i].hint);
+    $('#bar').style.width = ((i + 1) / uniq.length * 100) + '%';
+    setStatus('#runStatus', `좌표 변환 중… ${i + 1} / ${uniq.length}`);
+    if (i % 20 === 19) lsSet('cc_geo', state.geo);
+    await sleep(40);
+  }
+  lsSet('cc_geo', state.geo);
+
+  homeNames.forEach(u => { const g = state.geo[state.homes[u].addr]; if (g) Object.assign(state.homes[u], g); else { delete state.homes[u].lat; delete state.homes[u].lng; } });
+  lsSet('cc_homes', state.homes);
+  state.rows.forEach(r => {
+    const g = state.geo[r.addr], h = state.homes[r.user];
+    r.lat = g?.lat ?? null; r.lng = g?.lng ?? null;
+    r.home = h?.lat != null ? h : null;
+    r.dist = (r.lat != null && r.home) ? haversine(r.lat, r.lng, r.home.lat, r.home.lng) : null;
+  });
+  state.analyzed = true;
+  renderUsers();
+  const noHome = homeNames.filter(u => state.homes[u].lat == null);
+  setStatus('#runStatus', '✔ 분석 완료' + (noHome.length ? ` · 집 주소 변환 실패: ${noHome.join(', ')}` : ''), noHome.length ? 'bad' : 'ok');
+  $('#bar').style.width = '100%'; btn.disabled = false; $('#btnExport').disabled = false;
+  render(true);
+}
+
+/* ---------- 결과 렌더 ---------- */
+const radius = () => +$('#radius').value;
+const isNear = r => r.dist != null && r.dist <= radius();
+function filtered() {
+  const u = $('#fUser').value, t = $('#fText').value.trim().toLowerCase(), near = $('#fNear').checked, risk = $('#fRisk').value;
+  const out = state.rows.filter(r =>
+    (!u || r.user === u) &&
+    (!t || (r.merchant + r.biz + r.addr).toLowerCase().includes(t)) &&
+    (!near || !state.analyzed || isNear(r)) &&
+    (!state.fc || r._f.includes(state.fc)) &&
+    (risk === '' || (risk === 'any' ? r._s > 0 : risk === 'mid' ? r._s >= 2 : r._s >= 4)));
+  return risk ? out.sort((a, b) => b._s - a._s || b.amount - a.amount) : out;
+}
+function render(fit) {
+  scoreAll();
+  const all = state.rows, rows = filtered(), nearAll = all.filter(isNear);
+  $('#sTotal').textContent = all.length ? all.length.toLocaleString() : '-';
+  $('#sNear').textContent = state.analyzed ? nearAll.length.toLocaleString() : '-';
+  $('#sAmt').textContent = state.analyzed ? won(nearAll.reduce((s, r) => s + r.amount, 0)) + '원' : '-';
+  $('#sNa').textContent = state.analyzed ? all.filter(r => r.dist == null).length.toLocaleString() : '-';
+  $('#sRisk').textContent = all.length ? all.filter(r => r._s >= 2).length.toLocaleString() : '-';
+
+  const show = rows.slice(0, 1000);
+  $('#tbl tbody').innerHTML = show.map(r => `<tr class="${r._s >= 4 ? 'near' : ''}" data-id="${r.id}">
+    <td>${esc(r.user)}</td><td>${r.date}</td><td>${r.time}</td><td>${esc(r.merchant)}</td><td>${esc(r.biz)}</td>
+    <td class="num">${won(r.amount)}</td><td>${esc(r.addr)}</td>
+    <td class="num">${r.dist == null ? '-' : (r.dist < 1000 ? Math.round(r.dist) + ' m' : (r.dist / 1000).toFixed(1) + ' km')}</td>
+    <td>${riskBadge(r._s)}</td><td>${r._f.map(flagBadge).join('')}${state.analyzed && r.dist == null ? '<span class="badge b-na">좌표없음</span>' : ''}</td></tr>`).join('');
+  $('#tblInfo').textContent = rows.length > 1000 ? `${rows.length.toLocaleString()}건 중 1,000건만 표시 (내보내기는 전체 포함)` : `${rows.length.toLocaleString()}건`;
+  renderChips(); renderSummary(); renderMap(rows, fit);
+}
+function renderSummary() {
+  if (!state.rows.length) { $('#sum tbody').innerHTML = ''; return; }
+  const by = {}, an = state.analyzed;
+  state.rows.forEach(r => {
+    const o = by[r.user] ??= { n: 0, nn: 0, a: 0, na: 0, hi: 0, mid: 0 };
+    o.n++; o.a += r.amount;
+    if (isNear(r)) { o.nn++; o.na += r.amount; }
+    if (r._s >= 4) o.hi++; else if (r._s >= 2) o.mid++;
+  });
+  $('#sum tbody').innerHTML = Object.entries(by).sort((a, b) => b[1].hi - a[1].hi || b[1].mid - a[1].mid || b[1].nn - a[1].nn).map(([u, o]) => {
+    const p = o.n ? o.nn / o.n * 100 : 0;
+    return `<tr class="sum"><td>${esc(u)}</td><td class="num">${o.n}</td><td class="num">${o.hi}</td><td class="num">${o.mid}</td><td class="num">${an ? o.nn : '-'}</td><td class="num">${an ? p.toFixed(0) + '%' : '-'}</td><td><div class="bar"><i style="width:${an ? p : 0}%"></i></div></td><td class="num">${an ? won(o.na) : '-'}</td><td class="num">${won(o.a)}</td></tr>`;
+  }).join('');
+}
+
+/* ---------- 지도 ---------- */
+let circle = null;
+function renderMap(rows, fit) {
+  if (!state.mapReady) return;
+  state.overlays.forEach(o => o.setMap(null)); state.overlays = [];
+  if (circle) { circle.setMap(null); circle = null; }
+  state.iw.close();
+  const pts = rows.filter(r => r.lat != null).slice(0, 1500), bounds = new kakao.maps.LatLngBounds();
+  const userSel = $('#fUser').value, homes = new Map();
+  pts.forEach(r => {
+    const pos = new kakao.maps.LatLng(r.lat, r.lng); bounds.extend(pos);
+    const el = document.createElement('div'); el.className = 'dot ' + (isNear(r) ? 'near' : 'far'); el.title = r.merchant;
+    el.onclick = () => focusRow(r);
+    const ov = new kakao.maps.CustomOverlay({ position: pos, content: el, yAnchor: .5, xAnchor: .5, zIndex: isNear(r) ? 3 : 1 });
+    ov.setMap(state.map); state.overlays.push(ov);
+    if (r.home) homes.set(r.user, r.home);
+  });
+  homes.forEach((h, u) => {
+    const pos = new kakao.maps.LatLng(h.lat, h.lng); bounds.extend(pos);
+    const el = document.createElement('div'); el.className = 'home'; el.textContent = '🏠'; el.title = u + ' 집';
+    const ov = new kakao.maps.CustomOverlay({ position: pos, content: el, yAnchor: 1, zIndex: 9 });
+    ov.setMap(state.map); state.overlays.push(ov);
+  });
+  if (userSel && homes.get(userSel)) {
+    const h = homes.get(userSel);
+    circle = new kakao.maps.Circle({ center: new kakao.maps.LatLng(h.lat, h.lng), radius: radius(), strokeWeight: 2, strokeColor: '#e5484d', strokeOpacity: .9, fillColor: '#e5484d', fillOpacity: .1 });
+    circle.setMap(state.map);
+  }
+  if (fit && !bounds.isEmpty()) state.map.setBounds(bounds);
+}
+function focusRow(r) {
+  if (!state.mapReady || r.lat == null) return;
+  const pos = new kakao.maps.LatLng(r.lat, r.lng);
+  state.map.setCenter(pos); if (state.map.getLevel() > 4) state.map.setLevel(4);
+  state.iw.setContent(`<div class="iw"><b>${esc(r.merchant)}</b><br>${esc(r.addr)}<br>${r.date} ${r.time} · ${won(r.amount)}원<br>${esc(r.user)} 집에서 ${r.dist == null ? '-' : Math.round(r.dist) + ' m'}</div>`);
+  state.iw.setPosition(pos); state.iw.open(state.map);
+}
+
+/* ---------- 내보내기 ---------- */
+function exportXlsx() {
+  const out = filtered().map(r => ({
+    ...r.orig,
+    '이용자 집주소': state.homes[r.user]?.addr || '',
+    '집과의 거리(m)': r.dist == null ? '' : Math.round(r.dist),
+    '집근처 여부': isNear(r) ? 'Y' : (r.dist == null ? '확인불가' : 'N'),
+    '위험도': riskName(r._s), '이상징후': r._f.map(f => FLAGS[f].label).join(', '),
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out), '분석결과');
+  XLSX.writeFile(wb, `법인카드_집근처분석_반경${radius()}m.xlsx`);
+}
+
+/* ---------- 이상징후 탐지 ---------- */
+const FLAGS = {
+  kw:    { label: '제외업종',     w: 3, cls: 'b-hi' },
+  split: { label: '분할결제의심', w: 2, cls: 'b-hi' },
+  dup:   { label: '중복의심',     w: 2, cls: 'b-hi' },
+  near:  { label: '집근처',       w: 2, cls: 'b-near' },
+  big:   { label: '고액',         w: 1, cls: 'b-big' },
+  rep:   { label: '반복방문',     w: 1, cls: 'b-wk' },
+  wk:    { label: '주말',         w: 1, cls: 'b-wk' },
+  nt:    { label: '심야',         w: 1, cls: 'b-nt' },
+};
+const flagBadge = f => `<span class="badge ${FLAGS[f].cls}">${FLAGS[f].label}</span>`;
+const riskName = s => s >= 4 ? '높음' : s >= 2 ? '중간' : s >= 1 ? '낮음' : '정상';
+const riskBadge = s => s ? `<span class="risk r-${s >= 4 ? 'high' : s >= 2 ? 'mid' : 'low'}">${riskName(s)}</span>` : '';
+
+function readParams() {
+  const P = {
+    big: +$('#pBig').value || 0,
+    rep: Math.max(2, +$('#pRep').value || 5),
+    kw: $('#pKw').value.split(/[,，]+/).map(s => s.trim()).filter(Boolean),
+  };
+  state.P = P; return P;
+}
+// 건별로 판단할 수 없는 규칙(분할결제·중복·반복방문)은 그룹 단위로 미리 계산
+function prepareGroups() {
+  const P = readParams(), g = { split: new Map(), dup: new Map(), rep: new Map() };
+  const push = (m, k, r) => { const l = m.get(k); l ? l.push(r) : m.set(k, [r]); };
+  state.rows.forEach(r => {
+    r.g = {}; r.kw = P.kw.some(k => (r.merchant + ' ' + r.biz).includes(k));
+    if (r.amount <= 0 || !r.merchant) return;   // 취소건·가맹점 없음 제외
+    const day = r.user + '|' + r.merchant + '|' + r.date;
+    push(g.split, day, r); push(g.dup, day + '|' + r.amount, r); push(g.rep, r.user + '|' + r.merchant, r);
+  });
+  g.dup.forEach(l => l.length > 1 && l.forEach(r => r.g.dup = true));
+  g.split.forEach(l => P.big > 0 && l.length > 1 && l.reduce((s, r) => s + r.amount, 0) >= P.big && l.forEach(r => { if (!r.g.dup) r.g.split = true; }));
+  g.rep.forEach(l => l.length >= P.rep && l.forEach(r => r.g.rep = l.length));
+}
+function scoreAll() {
+  const P = state.P.big === undefined ? readParams() : state.P;
+  state.rows.forEach(r => {
+    const f = [];
+    if (r.kw) f.push('kw');
+    if (r.g?.split) f.push('split');
+    if (r.g?.dup) f.push('dup');
+    if (state.analyzed && isNear(r)) f.push('near');
+    if (P.big > 0 && r.amount >= P.big) f.push('big');
+    if (r.g?.rep) f.push('rep');
+    if (r.weekend) f.push('wk');
+    if (r.night) f.push('nt');
+    r._f = f; r._s = f.reduce((s, x) => s + FLAGS[x].w, 0);
+  });
+}
+function renderChips() {
+  const c = {}; state.rows.forEach(r => r._f.forEach(f => c[f] = (c[f] || 0) + 1));
+  $('#chips').innerHTML = Object.keys(FLAGS).filter(k => c[k]).map(k =>
+    `<span class="chip ${state.fc === k ? 'on' : ''}" data-f="${k}">${FLAGS[k].label}<b>${c[k].toLocaleString()}</b></span>`).join('');
+}
+
+/* ---------- Gemini ---------- */
+const GEM_SYS = `당신은 기업 내부통제·감사 경험이 풍부한 분석가입니다. 제공된 JSON 집계 데이터만 근거로 한국어로 작성하세요.
+규칙: (1) 데이터에 없는 수치나 사실을 만들어내지 않는다. (2) 탐지 결과는 '의심 신호'이며 부정 사용으로 단정하지 않고 '확인 필요', '소명 요청' 같은 표현을 쓴다. (3) 금액은 원 단위로 천 단위 쉼표를 쓴다. (4) 이용자는 데이터에 쓰인 이름 그대로 부른다. (5) 마크다운(제목, 목록, 표)으로 출력한다.`;
+const SUMMARY_PROMPT = `아래 데이터를 바탕으로 '이상징후 탐지 요약'을 작성하세요.
+구성: ## 한눈에 보기 (3~5줄) / ## 주요 이상징후 패턴 (유형별 건수·금액과 의미) / ## 우선 확인 대상 (이용자·거래 5건 내외와 사유) / ## 권고 조치 (3~5개).
+전체 분량은 간결하게 유지하세요.`;
+const REPORT_PROMPT = `경영진 보고용 '법인카드 이상징후 점검 보고서'의 본문을 작성하세요. 문서 제목과 작성자 정보는 시스템이 따로 붙이므로 쓰지 말고 '## 1.'부터 시작하세요.
+구성:
+## 1. 보고 개요 (점검 기간, 대상 건수·금액, 이용자 수, 적용한 탐지 기준)
+## 2. 핵심 요약 (경영진이 알아야 할 결론 3~5개를 중요한 순서로 불릿)
+## 3. 주요 지표 (표: 구분 / 건수 / 금액 / 비중)
+## 4. 이상징후 유형별 분석 (유형마다 탐지 기준, 현황, 시사점)
+## 5. 중점 관리 대상 (위험도 상위 이용자와 거래, 표 포함)
+## 6. 리스크 평가 (재무·규정 준수·평판 관점의 가능성과 영향)
+## 7. 권고 조치 (즉시 / 1개월 내 / 중장기로 나누고 담당 주체 제안)
+## 8. 한계 및 유의사항 (데이터 한계, 의심 신호는 확정이 아님)
+문장은 경영진이 빠르게 읽도록 간결하게 쓰세요.`;
+
+function buildContext(mask) {
+  scoreAll();
+  const rows = state.rows, us = users();
+  const lab = u => mask ? '직원' + (us.indexOf(u) + 1) : u;
+  const dates = rows.map(r => r.date).filter(d => /^\d{4}-/.test(d)).sort();
+  const flags = {}, by = {}, dist = { 높음: 0, 중간: 0, 낮음: 0, 정상: 0 };
+  rows.forEach(r => {
+    r._f.forEach(f => { const o = flags[FLAGS[f].label] ??= { 건수: 0, 금액: 0 }; o.건수++; o.금액 += r.amount; });
+    dist[riskName(r._s)]++;
+    const o = by[r.user] ??= { 이용자: lab(r.user), 전체건수: 0, 전체금액: 0, 높음: 0, 중간: 0, 점수합: 0 };
+    o.전체건수++; o.전체금액 += r.amount; o.점수합 += r._s;
+    if (r._s >= 4) o.높음++; else if (r._s >= 2) o.중간++;
+  });
+  const ctx = {
+    보고기간: { 시작: dates[0] || '-', 종료: dates[dates.length - 1] || '-' },
+    전체: { 건수: rows.length, 금액: rows.reduce((s, r) => s + r.amount, 0), 이용자수: us.length },
+    탐지기준: { 고액기준원: state.P.big, 반복방문기준회: state.P.rep, 제외업종키워드: state.P.kw, 집근처분석수행: state.analyzed, 집근처반경m: state.analyzed ? radius() : null },
+    위험도분포: dist,
+    이상징후유형별: flags,
+    이용자별상위: Object.values(by).sort((a, b) => b.점수합 - a.점수합).slice(0, 15),
+    상위이상거래: rows.filter(r => r._s > 0).sort((a, b) => b._s - a._s || b.amount - a.amount).slice(0, 40).map(r => ({
+      이용자: lab(r.user), 일자: r.date, 시간: r.time || undefined, 가맹점: r.merchant, 업종: r.biz || undefined, 금액: r.amount,
+      집과거리m: r.dist == null ? undefined : Math.round(r.dist), 위험도: riskName(r._s), 이상징후: r._f.map(f => FLAGS[f].label),
+    })),
+  };
+  const unmask = t => mask ? t.replace(/직원(\d+)/g, (m, n) => us[n - 1] ?? m) : t;
+  return { ctx, unmask };
+}
+
+async function callGemini(system, prompt, maxTokens, test) {
+  const key = $('#gkey').value.trim(), model = $('#gmodel').value.trim() || 'gemini-2.5-flash';
+  if (!key) throw new Error('Gemini API 키를 입력하세요.');
+  const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: maxTokens } };
+  if (system) body.systemInstruction = { parts: [{ text: system }] };
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
+    signal: AbortSignal.timeout(120000),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error?.message || 'HTTP ' + res.status);
+  if (test) return true;
+  const text = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+  if (!text) throw new Error('응답이 비어 있습니다 (' + (j.candidates?.[0]?.finishReason || j.promptFeedback?.blockReason || '원인 불명') + ')');
+  return text;
+}
+async function testGemini() {
+  setStatus('#gStatus', '확인 중…');
+  try {
+    const names = await loadModels();   // 목록 조회만으로 키 유효성 확인 (생성 호출보다 훨씬 빠름)
+    const m = $('#gmodel').value.trim();
+    if (names.length && m && !names.includes(m)) setStatus('#gStatus', `✔ 키는 정상입니다. 단, 모델 "${m}"은 목록에 없습니다. 목록에서 골라주세요.`, 'bad');
+    else setStatus('#gStatus', '✔ 연결되었습니다.', 'ok');
+    saveGkey();
+  } catch (e) { setStatus('#gStatus', '✖ ' + (e.name === 'TimeoutError' ? '응답 시간 초과 (네트워크 확인)' : e.message), 'bad'); }
+}
+// 이 키로 generateContent를 쓸 수 있는 모델을 목록으로 채움 (모델이 종료돼도 직접 고를 수 있게)
+async function loadModels() {
+  const key = $('#gkey').value.trim();
+  if (!key) throw new Error('Gemini API 키를 입력하세요.');
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { headers: { 'x-goog-api-key': key }, signal: AbortSignal.timeout(15000) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error?.message || 'HTTP ' + res.status);
+  const names = (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+    .map(m => m.name.replace(/^models\//, '')).filter(n => /^gemini-/.test(n) && !/(image|tts|embed|live|audio|vision)/.test(n)).sort().reverse();
+  if (names.length) $('#gmodels').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
+  return names;
+}
+function saveGkey() {
+  try {
+    if ($('#gsave').checked) { localStorage.setItem('cc_gkey', $('#gkey').value.trim()); } else localStorage.removeItem('cc_gkey');
+    localStorage.setItem('cc_gmodel', $('#gmodel').value.trim());
+  } catch {}
+}
+
+async function runAI(kind) {
+  const bS = $('#btnSummary'), bR = $('#btnReport'), btn = kind === 'report' ? bR : bS, old = btn.textContent;
+  bS.disabled = bR.disabled = true; btn.textContent = '생성 중…';
+  setStatus('#gStatus', 'Gemini에 요청 중… (최대 1분)');
+  try {
+    const { ctx, unmask } = buildContext($('#gmask').checked), note = $('#rNote').value.trim();
+    const prompt = (kind === 'report' ? REPORT_PROMPT : SUMMARY_PROMPT) + (note ? `\n\n[추가 지시사항]\n${note}` : '') + `\n\n[데이터]\n${JSON.stringify(ctx)}`;
+    const body = unmask(await callGemini(GEM_SYS, prompt, kind === 'report' ? 8192 : 4096));
+    const d = new Date(), today = fmtDate(d.getFullYear(), d.getMonth() + 1, d.getDate()), p = ctx.보고기간;
+    const head = kind === 'report'
+      ? `# 법인카드 이상징후 점검 보고서\n\n**보고기간** ${p.시작} ~ ${p.종료} · **작성일** ${today} · **작성부서** ${$('#rDept').value.trim() || '-'} · **작성자** ${$('#rAuthor').value.trim() || '-'}\n\n---\n\n`
+      : `# 이상징후 탐지 요약\n\n**대상기간** ${p.시작} ~ ${p.종료} · **작성일** ${today}\n\n`;
+    showAI(kind, head + body);
+    setStatus('#gStatus', '✔ 생성 완료', 'ok'); saveGkey();
+  } catch (e) { setStatus('#gStatus', '✖ ' + (e.name === 'TimeoutError' ? '응답 시간 초과 (2분). 모델을 더 빠른 것으로 바꿔 보세요.' : e.message), 'bad'); }
+  finally { btn.textContent = old; updateRunBtn(); }
+}
+function showAI(kind, md) {
+  state.ai = { kind, md };
+  $('#aiTitle').textContent = kind === 'report' ? '경영진 보고서' : '이상징후 요약';
+  $('#aiBody').innerHTML = md2html(md);
+  $('#reportCard').hidden = false;
+  $('#reportCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function md2html(src) {
+  const inl = t => t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  const out = []; let list = null, tbl = [];
+  const endList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  const endTbl = () => {
+    if (!tbl.length) return;
+    const cells = l => l.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
+    const rows = tbl.filter(l => !/^\s*\|?\s*:?-{2,}/.test(l)).map(cells);
+    out.push('<table><thead><tr>' + rows[0].map(c => `<th>${inl(c)}</th>`).join('') + '</tr></thead><tbody>' +
+      rows.slice(1).map(r => '<tr>' + r.map(c => `<td>${inl(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table>');
+    tbl = [];
+  };
+  esc(src).split(/\r?\n/).forEach(line => {
+    if (/^\s*\|/.test(line)) { endList(); tbl.push(line); return; }
+    endTbl();
+    let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)/))) { endList(); out.push(`<h${m[1].length}>${inl(m[2])}</h${m[1].length}>`); }
+    else if ((m = line.match(/^\s*[-*•]\s+(.*)/))) { if (list !== 'ul') { endList(); out.push('<ul>'); list = 'ul'; } out.push(`<li>${inl(m[1])}</li>`); }
+    else if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) { if (list !== 'ol') { endList(); out.push('<ol>'); list = 'ol'; } out.push(`<li>${inl(m[1])}</li>`); }
+    else if (/^\s*-{3,}\s*$/.test(line)) { endList(); out.push('<hr>'); }
+    else if (!line.trim()) endList();
+    else { endList(); out.push(`<p>${inl(line)}</p>`); }
+  });
+  endList(); endTbl();
+  return out.join('');
+}
+function saveDoc() {
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>body{font-family:'Malgun Gothic';font-size:11pt}h1{font-size:20pt}h2{font-size:14pt;color:#1a4fd0}table{border-collapse:collapse}td,th{border:1px solid #999;padding:4px 8px}</style></head><body>${$('#aiBody').innerHTML}</body></html>`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿', html], { type: 'application/msword' }));
+  a.download = (state.ai?.kind === 'report' ? '법인카드_이상징후_보고서' : '법인카드_이상징후_요약') + '.doc';
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------- 이벤트 ---------- */
+$('#btnKey').onclick = connectMap;
+$('#btnRun').onclick = runAnalysis;
+$('#btnBulk').onclick = applyBulk;
+$('#btnExport').onclick = exportXlsx;
+$('#btnClearCache').onclick = () => { state.geo = {}; lsSet('cc_geo', {}); setStatus('#runStatus', '좌표 캐시를 비웠습니다.'); };
+$('#radius').oninput = () => { $('#radiusLabel').textContent = radius(); render(); };
+['#fUser', '#fNear', '#fRisk'].forEach(s => $(s).onchange = () => render(true));
+$('#fText').oninput = () => render();
+$('#tbl tbody').addEventListener('click', e => { const tr = e.target.closest('tr'); if (tr) focusRow(state.rows[+tr.dataset.id]); });
+const drop = $('#drop'), fileIn = $('#file');
+drop.onclick = () => fileIn.click();
+fileIn.onchange = () => fileIn.files[0] && handleFile(fileIn.files[0]);
+['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('on'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('on'); }));
+drop.addEventListener('drop', e => e.dataTransfer.files[0] && handleFile(e.dataTransfer.files[0]));
+
+// 이상징후 기준 / Gemini 설정
+const sp = lsGet('cc_params', null);
+if (sp) { $('#pBig').value = sp.big; $('#pRep').value = sp.rep; $('#pKw').value = sp.kw; }
+['#pBig', '#pRep', '#pKw'].forEach(s => $(s).onchange = () => {
+  lsSet('cc_params', { big: $('#pBig').value, rep: $('#pRep').value, kw: $('#pKw').value });
+  prepareGroups(); render();
+});
+$('#chips').addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if (!c) return;
+  state.fc = state.fc === c.dataset.f ? '' : c.dataset.f; render(true);
+});
+$('#btnGkey').onclick = testGemini;
+$('#gsave').onchange = saveGkey;
+$('#btnSummary').onclick = () => runAI('summary');
+$('#btnReport').onclick = () => runAI('report');
+$('#aiPrint').onclick = () => window.print();
+$('#aiDoc').onclick = saveDoc;
+$('#aiCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText(state.ai.md); $('#aiCopy').textContent = '복사됨 ✔'; setTimeout(() => $('#aiCopy').textContent = '복사', 1500); } catch {}
+};
+try {
+  const gk = localStorage.getItem('cc_gkey'); if (gk) { $('#gkey').value = gk; $('#gsave').checked = true; }
+  const gm = localStorage.getItem('cc_gmodel'); if (gm && !/^gemini-2\.5/.test(gm)) $('#gmodel').value = gm;
+} catch {}
+
+const savedKey = lsGet('cc_key', '');
+if (savedKey) { $('#appkey').value = savedKey; connectMap(); }
+</script>
+</body>
+</html>
